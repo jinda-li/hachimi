@@ -1,0 +1,9 @@
+# 每台机器上是一只自己的猫：家和日志不进 git
+hachimi/猫窝/
+hachimi/猫窝-*/
+hachimi/轨迹/
+
+# 生成出来的
+out/
+__pycache__/
+*.pyc

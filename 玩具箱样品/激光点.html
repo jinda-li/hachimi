@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>激光点</title>
+<style>body{margin:0;background:#2b2b2b;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script>
+// 红点。它是我的猎物。
+const c = document.getElementById('c');
+const g = c.getContext('2d');
+c.width = innerWidth; c.height = innerHeight;
+let x = c.width / 2, y = c.height / 2;  // 红点在哪
+let 去x = x, 去y = y;                    // 红点想去哪
+let 扑到 = 0;
+const 快 = 0.08;                          // 红点跑多快
+const 换地方的时间 = 700;                  // 多久换一个地方
+
+function 换个地方() {
+  去x = Math.random() * c.width;
+  去y = Math.random() * c.height;
+}
+setInterval(换个地方, 换地方的时间);
+
+c.addEventListener('mousedown', e => {
+  if (Math.hypot(e.clientX - x, e.clientY - y) < 20) {
+    扑到++;
+    换个地方();
+  }
+});
+
+function 画() {
+  x += (去x - x) * 快;
+  y += (去y - y) * 快;
+  g.fillStyle = '#2b2b2b';
+  g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = 'red';
+  g.beginPath();
+  g.arc(x, y, 8, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#888';
+  g.font = '20px sans-serif';
+  g.fillText('扑到：' + 扑到, 20, 30);
+  requestAnimationFrame(画);
+}
+画();
+</script>

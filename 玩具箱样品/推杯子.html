@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>推杯子</title>
+<style>body{margin:0;background:#f3e9d8;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script>
+// 桌子上有杯子。杯子是用来推下去的。
+const c = document.getElementById('c');
+const g = c.getContext('2d');
+c.width = innerWidth; c.height = innerHeight;
+const 桌面 = c.height * 0.55;  // 桌子有多高
+const 桌边 = c.width * 0.7;    // 桌子右边在哪
+const 地板 = c.height - 40;
+let 杯子们 = [];
+let 咣当 = 0;
+
+function 摆杯子() {
+  杯子们 = [];
+  for (let i = 0; i < 5; i++) {
+    杯子们.push({x: 80 + i * 110, y: 桌面 - 50, vx: 0, vy: 0, 转: 0, 掉了: false, 碎了: false});
+  }
+}
+摆杯子();
+
+c.addEventListener('mousedown', e => {
+  for (const b of 杯子们) {
+    if (e.clientX > b.x && e.clientX < b.x + 40 && e.clientY > b.y && e.clientY < b.y + 50) {
+      b.vx = 6;  // 推！
+    }
+  }
+});
+addEventListener('keydown', e => { if (e.key === 'r') 摆杯子(); });  // 按 r 杯子会回来
+
+function 画() {
+  g.fillStyle = '#f3e9d8';
+  g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#8b5a2b';
+  g.fillRect(0, 桌面, 桌边, 20);  // 桌子
+  for (const b of 杯子们) {
+    b.x += b.vx;
+    if (b.x > 桌边) b.掉了 = true;
+    if (b.掉了 && !b.碎了) {
+      b.vy += 0.5;  // 往下掉（以前写成减了，杯子飞上天了）
+      b.y += b.vy;
+      b.转 += 0.1;
+      if (b.y > 地板 - 50) {
+        b.y = 地板 - 50;
+        b.vx = 0;
+        b.碎了 = true;
+        咣当++;
+      }
+    } else if (!b.掉了) {
+      b.vx *= 0.97;  // 在桌子上会慢下来
+    }
+    g.save();
+    g.translate(b.x + 20, b.y + 25);
+    g.rotate(b.转);
+    g.fillStyle = b.碎了 ? '#bbb' : '#4a90d9';
+    g.fillRect(-20, -25, 40, 50);
+    g.restore();
+  }
+  g.fillStyle = '#333';
+  g.font = '22px sans-serif';
+  g.fillText('咣当：' + 咣当, 20, 34);
+  requestAnimationFrame(画);
+}
+画();
+</script>
