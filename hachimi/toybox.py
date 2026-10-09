@@ -5,7 +5,9 @@
     step(状态, 键)      -> 新状态。键是 "上" "下" "左" "右" "空格"，或者 ""（这一下没按，游戏自己走一步）
     draw(状态)          -> 字符串，就是屏幕。最多 20 行、40 个字宽
     over(状态)          -> True 就是游戏结束了
-只能 import random 和 math。
+只能 import random、math，和现成的玩具零件（零件.py）：
+    import 零件
+    start, step, draw, over = 零件.躲避(标题="滑雪", 主角="A", 障碍="^", 宝贝="*")
 
 代码是模型写的，所以跑在单独的进程里：先查语法树，不许碰文件、网络、双下划线；
 每次调用超过 3 秒就当它卡死了，掐掉。
@@ -18,11 +20,18 @@ import sys
 import threading
 from pathlib import Path
 
+HERE = Path(__file__).resolve().parent
+
 SPEC = ("玩具箱/ 里的 .py 游戏要写四个函数：start() 返回状态；step(状态, 键) 返回新状态，"
         "键是 上/下/左/右/空格，或者空字符串（没按，游戏自己走一步）；draw(状态) 返回屏幕字符串，"
-        "最多 20 行 40 字宽；over(状态) 返回是否结束。只能 import random 和 math。")
+        "最多 20 行 40 字宽；over(状态) 返回是否结束。只能 import random 和 math。"
+        "也可以用现成的玩具零件，几行就拼一个：import 零件 然后 "
+        "start, step, draw, over = 零件.躲避(标题=\"滑雪\", 主角=\"A\", 障碍=\"^\", 宝贝=\"*\")。"
+        "零件有：躲避（东西迎面冲来，左右躲）、接住（东西往下掉，左右接）、扑（追乱跑的猎物，空格扑）、"
+        "打地鼠（洞里冒东西，挪过去空格拍）、跳（往前跑，空格跳过障碍）。"
+        "每个零件能改哪些参数，read 零件说明.md 就知道。")
 
-ALLOWED_IMPORTS = {"random", "math"}
+ALLOWED_IMPORTS = {"random", "math", "零件"}
 BANNED_NAMES = {"open", "exec", "eval", "compile", "__import__", "input", "globals", "locals",
                 "vars", "getattr", "setattr", "delattr", "breakpoint", "help", "exit", "quit",
                 "memoryview", "__builtins__"}
@@ -42,12 +51,20 @@ def check(src: str):
         elif isinstance(n, ast.ImportFrom):
             mods = [(n.module or "").split(".")[0]]
         if mods and any(m not in ALLOWED_IMPORTS for m in mods):
-            return f"玩具里只能用 random 和 math，不能用 {', '.join(mods)}"
+            return f"玩具里只能用 random、math 和 零件，不能用 {', '.join(mods)}"
         if isinstance(n, ast.Name) and n.id in BANNED_NAMES:
             return f"玩具里不能用 {n.id}"
         if isinstance(n, ast.Attribute) and n.attr.startswith("__"):
             return "玩具里不能碰带双下划线的东西"
-    defined = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+    defined = set()  # 自己写的 def，或者从零件拿来的 start, step, draw, over = ...
+    for n in tree.body:
+        if isinstance(n, ast.FunctionDef):
+            defined.add(n.name)
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                for e in (t.elts if isinstance(t, ast.Tuple) else [t]):
+                    if isinstance(e, ast.Name):
+                        defined.add(e.id)
     missing = [f for f in NEEDED if f not in defined]
     if missing:
         return f"玩具还缺函数：{', '.join(missing)}"
@@ -58,6 +75,7 @@ def check(src: str):
 CHILD = r'''
 import io, json, sys, traceback, importlib.util
 sys.stdin.reconfigure(encoding="utf-8"); real = sys.stdout; real.reconfigure(encoding="utf-8")
+sys.path.insert(0, sys.argv[2])  # 零件.py 在这里
 spec = importlib.util.spec_from_file_location("toy", sys.argv[1])
 m = importlib.util.module_from_spec(spec)
 state = None
@@ -85,7 +103,7 @@ class Toy:
     def __init__(self, path: Path):
         self.path = path
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        self.p = subprocess.Popen([sys.executable, "-I", "-c", CHILD, str(path)],
+        self.p = subprocess.Popen([sys.executable, "-I", "-c", CHILD, str(path), str(HERE)],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, cwd=path.parent,
                                   text=True, encoding="utf-8", creationflags=flags)
