@@ -339,7 +339,8 @@ TOOLS = [
         {"keys": S}, ["keys"]),
     _fn("visit", "去找两脚兽：跑到两脚兽面前（屏幕会跳到最前面），蹭、叫、给两脚兽看东西。say 是你跟两脚兽说的话。"
         "gift 是叼过去的东西：窗外/ 里的图（给两脚兽看）、玩具箱/ 里的 .py 游戏（两脚兽会真的玩，玩完你会知道）、"
-        "门口/ 的礼物。两脚兽不在电脑前的话，东西会放在门口等两脚兽回来", {"say": S, "gift": S}, ["say"]),
+        "门口/ 的礼物。不写 gift 就是空着爪子去。两脚兽不在电脑前的话，东西会留着等两脚兽回来",
+        {"say": S, "gift": S}, ["say"]),
     _fn("sleep", "睡觉。睡多久自己定。醒来的时候会忘掉这次醒着的事，只剩写下来的", {"minutes": N}, ["minutes"]),
 ]
 
@@ -472,8 +473,10 @@ def chat(args, messages, tools=None, max_tokens=2500):
 # 告诉它一次现在几点。这只是钟，不是催它。
 
 HEARTBEAT_MINUTES = 10
+IDLE_TALK_LIMIT = 8  # 连着这么多次光说不做、也没人理，就当它发呆睡着了
 LINE_BEAT = 0.4  # 一行字和下一行之间停一下，只是为了看得清，不是它的时间
 ONLY_ACTIONS = re.compile(r"^(\s*[（(][^（）()]+[）)]\s*)+$")
+STAR_ACTION = re.compile(r"\*([^*\n]+)\*")
 
 
 def fmt_left(seconds):
@@ -651,7 +654,10 @@ class Cat:
             return f"你跑到两脚兽面前。{r}"
         if f and f.suffix.lower() in IMAGE_EXT:
             return "你跑到两脚兽面前，把图摆在两脚兽眼前。"
-        return "你跑到两脚兽面前。" + ("把东西放下了。" if f else "")
+        if f:
+            return "你跑到两脚兽面前，把东西放下了。"
+        return ("你空着爪子跑到两脚兽面前。两脚兽只听到你说话，没看到东西。"
+                "要给两脚兽看什么，gift 里写上它的路径（比如 门口/雪山.jpg）。")
 
     # 两脚兽玩它做的游戏
 
@@ -832,6 +838,7 @@ class Cat:
     def perform(self, text):
         """一行一行显示它说的话。它说出口的就是说出口了，不截断。"""
         for line in text.splitlines():
+            line = STAR_ACTION.sub(r"（\1）", line)  # 有的模型用 *伸懒腰* 写动作，显示成括号
             if line.strip():
                 if ONLY_ACTIONS.match(line):
                     out("  " + line.strip(), "dim")
@@ -960,8 +967,10 @@ class Cat:
         out(f"\n（{NAME}醒了）", "dim")
         sleep_for = None
         last_text = None
+        idle = 0  # 连着几次只说话、没调工具、也没人来
         for _ in range(self.args.max_steps):
-            self.drain_inbox(msgs)
+            if self.drain_inbox(msgs):
+                idle = 0
             self.status, self.status_until = "耳朵转来转去", 0
             m = self.think(msgs)
             self.status = ""
@@ -994,6 +1003,7 @@ class Cat:
             if sleep_for is not None:
                 break
             if calls:
+                idle = 0
                 continue
 
             # 只说话不调工具：这一轮结束，在等人。没人来，就告诉它现在几点
@@ -1002,11 +1012,17 @@ class Cat:
                 sleep_for = 60
                 break
             last_text = text
+            idle += 1
+            if idle >= IDLE_TALK_LIMIT:  # 保险：一直光说不做，是模型卡在自言自语里了
+                out(f"（{NAME}发了会儿呆，睡着了）", "dim")
+                sleep_for = 60
+                break
             while self.inbox.empty():
                 done, _ = self.hold("等着", HEARTBEAT_MINUTES * 60 / self.args.speed)
                 if done and self.inbox.empty():
+                    note = "（你这几次都只是在说，说的动作没有真的发生。）" if idle >= 3 else ""
                     msgs.append({"role": "user", "content": f"【现在】{dt.datetime.now():%H:%M}。周围很安静。"
-                                                            + self.presence_line()})
+                                                            + self.presence_line() + note})
                     break
         if sleep_for is None:  # 保险：想太多次了
             out(f"（{NAME}玩累了，自己趴下了）", "dim")
