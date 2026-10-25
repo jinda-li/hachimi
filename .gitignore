@@ -5,6 +5,9 @@ hachimi/轨迹/
 
 # 生成出来的
 out/
+build/
+dist/
+*.egg-info/
 __pycache__/
 *.pyc
 

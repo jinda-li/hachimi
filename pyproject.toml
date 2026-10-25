@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hachimi"
+version = "0.1.0"
+description = "一只住在命令行里的猫咪 agent。它不干活，自己过日子。"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["prompt_toolkit>=3.0", "Pillow>=10", "numpy>=1.24"]
+
+[project.scripts]
+hachimi = "hachimi.hachimi:main"
+
+[tool.setuptools]
+packages = ["hachimi"]
+
+[tool.setuptools.package-data]
+hachimi = ["persona.md", "演示.jsonl"]

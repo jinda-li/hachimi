@@ -27,12 +27,27 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-import senses
-import toybox
-import window
-import 零件
+try:  # 装成包（pip / uvx）的时候
+    from . import senses, toybox, window, 零件
+except ImportError:  # 直接 python hachimi.py
+    import senses
+    import toybox
+    import window
+    import 零件
 
 HERE = Path(__file__).resolve().parent
+
+
+def home_dir():
+    """猫住在哪：HACHIMI_HOME 说了算；从源码直接跑，住在源码旁边；装成包，住在 ~/.hachimi。"""
+    if os.environ.get("HACHIMI_HOME"):
+        return Path(os.environ["HACHIMI_HOME"]).expanduser()
+    if (HERE.parent / ".git").exists() or (HERE / "猫窝").exists() or (HERE / "设置.json").exists():
+        return HERE
+    return Path.home() / ".hachimi"
+
+
+HOME = home_dir()  # 猫窝、轨迹、设置.json 都在这里
 SYSTEM_MIN = "你住在这台电脑里。"  # 训练数据里的系统消息，性格在权重里
 WEEK = "一二三四五六日"
 NAME = "哈基米"  # 领养的时候起的名字
@@ -152,9 +167,9 @@ class Room:
     def new_notes(self, since: float):
         return [f for f in (self.root / "门缝").glob("*") if f.stat().st_mtime > since]
 
-    def dream(self):
+    def dream(self, today=None):
         """睡着的时候梦到小本本里的一件旧事（今天以前记的）。梦到了做不做点什么，它自己定。"""
-        today = f"{dt.date.today()}"
+        today = f"{today or dt.date.today()}"
         old = [line.strip() for line in self.peek("两脚兽.md", "").splitlines()
                if (m := re.search(r"\d{4}-\d{2}-\d{2}", line)) and m.group(0) < today]
         return random.choice(old) if old and random.random() < 0.5 else None
@@ -187,12 +202,12 @@ class Bond:
         self.d["上次"] = time.time()
         self.save()
 
-    def describe(self):
+    def describe(self, today=None):
         rows = []
         if self.d.get("天性"):
             rows.append("【天性】" + self.d["天性"])
         if self.d.get("来的那天"):
-            days = (dt.date.today() - dt.date.fromisoformat(self.d["来的那天"])).days + 1
+            days = ((today or dt.date.today()) - dt.date.fromisoformat(self.d["来的那天"])).days + 1
             we = self.d.get("我们", {})
             rows.append(f"【我们】你来这个家第 {days} 天。两脚兽跟你说过 {we.get('说话', 0)} 次话，"
                         f"玩过你做的玩具 {we.get('玩玩具', 0)} 次；你去找过两脚兽 {we.get('来找', 0)} 次。")
@@ -273,7 +288,7 @@ def adopt(bond: Bond, room: Path, born: bool, interactive: bool):
 # ── 它的脑袋（模型服务） ─────────────────────────────────
 # 云端优先：任何 OpenAI 兼容、会调工具（最好能看图）的服务都行。设置存在 设置.json，不进 git。
 
-SETTINGS = HERE / "设置.json"
+SETTINGS = HOME / "设置.json"
 BRAINS = [
     ("OpenRouter", "https://openrouter.ai/api/v1"),
     ("阿里云百炼（通义千问）", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
@@ -302,6 +317,7 @@ def setup_brain():
     model = input("  模型名：").strip()
     key = "" if "127.0.0.1" in url or "localhost" in url else getpass.getpass("  API key（不显示，存在本机 设置.json）：").strip()
     s = {"base_url": url, "model": model, "api_key": key}
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS.write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"{C['dim']}  存好了。以后想换：改 {SETTINGS.name}，或者用 --base-url / --model / 环境变量。{C['off']}")
     return s
@@ -484,6 +500,18 @@ def fmt_left(seconds):
     return f"{m}:{s:02d}" if m else f"{s}s"
 
 
+def perform(text, beat=LINE_BEAT):
+    """一行一行显示它说的话。它说出口的就是说出口了，不截断。"""
+    for line in text.splitlines():
+        line = STAR_ACTION.sub(r"（\1）", line)  # 有的模型用 *伸懒腰* 写动作，显示成括号
+        if line.strip():
+            if ONLY_ACTIONS.match(line):
+                out("  " + line.strip(), "dim")
+            else:
+                say(line)
+            time.sleep(beat)
+
+
 def tool_label(name, a):
     shown = a.get("path") or a.get("query") or a.get("url") or a.get("keys") or ""
     if name == "move":
@@ -506,6 +534,8 @@ BACK_MINUTES = 20   # 走开这么久再回来，才算"回来了"
 POP_GAP = 600       # 窗口跳到最前面，最多每 10 分钟一次（保险）
 HUMAN_TICK = 0.3    # 两脚兽玩游戏时，不按键游戏也每 0.3 秒自己走一步
 IMAGE_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+AWAY_MIN_MINUTES = 30  # 程序关了这么久以上，打开时才补过那段日子
+AWAY_STEPS = 60        # 补过的时候，一次醒来最多想几次（省钱、省时间）
 
 
 class Cat:
@@ -543,16 +573,30 @@ class Cat:
         self.idle = None                      # 键盘鼠标多久没动了（秒），不知道就是 None
         self.last_typed = 0.0                 # 两脚兽上次跟它说话
         self.last_pop = 0.0
+        # 你不在的时候（程序关着）：打开时按它自己的钟把那段日子补过一遍
+        self.away = False
+        self.clock = None                     # 补过的时候它的钟（datetime）；平时是 None，用真的钟
+        self.fell_asleep = None               # 补过的时候：上一次睡着是几点（datetime）
+        self.later = []                       # 补过的时候两脚兽说的话，等补完再交给它
+        self.skip = threading.Event()         # 两脚兽不想等了
+        self.brain_ok = True                  # 上一次醒来脑袋连上了没有
+
+    def now(self):
+        return self.clock or dt.datetime.now()
 
     # 两脚兽在不在
 
     def present(self):
         """两脚兽在不在电脑前：True / False / None（不知道）。"""
+        if self.away:
+            return False
         if time.time() - self.last_typed < AWAY_MINUTES * 60:
             return True
         return None if self.idle is None else self.idle < AWAY_MINUTES * 60
 
     def presence_line(self):
+        if self.away:
+            return "两脚兽不在家。"
         p = self.present()
         if p is None:
             return ""
@@ -582,6 +626,8 @@ class Cat:
             time.sleep(15)
 
     def came_back(self, gone):
+        if self.away:
+            return  # 正在补过去的日子，补完一起给两脚兽看
         shown = []
         for said, f in self.pending:
             self.show_visit(said, f, late=True)
@@ -792,7 +838,7 @@ class Cat:
         if not self.toy:
             return "没有打开的玩具。先 play。"
         ks = toybox.parse_keys(keys) or [""]
-        tick = max(0.03, 0.3 / self.args.speed)
+        tick = 0.03 if self.away else max(0.03, 0.3 / self.args.speed)
         r, n = {}, 0
         for k in ks:
             r = self.toy.call("step", k)
@@ -830,21 +876,19 @@ class Cat:
     def hold(self, status, seconds):
         """它在做一件持续的事，按它定的时间等着。有动静就先停下。返回（做完没有，真实过了几秒）。"""
         t0 = time.time()
+        if self.away:  # 过去的日子：不用真的等，钟往前拨
+            self.clock += dt.timedelta(seconds=seconds * self.args.speed)
+            return True, seconds
         self.status, self.status_until = status, t0 + seconds
         done = not self.interrupt.wait(seconds)
         self.status = ""
         return done, time.time() - t0
 
     def perform(self, text):
-        """一行一行显示它说的话。它说出口的就是说出口了，不截断。"""
-        for line in text.splitlines():
-            line = STAR_ACTION.sub(r"（\1）", line)  # 有的模型用 *伸懒腰* 写动作，显示成括号
-            if line.strip():
-                if ONLY_ACTIONS.match(line):
-                    out("  " + line.strip(), "dim")
-                else:
-                    say(line)
-                time.sleep(LINE_BEAT)
+        perform(text, self.beat())
+
+    def beat(self):
+        return LINE_BEAT / 4 if self.away else LINE_BEAT
 
     def act(self, a):
         """它自己定的动作、自己定的时间。有动静会先停下，告诉它做了多久；接着做还是去看，它自己定。"""
@@ -862,24 +906,27 @@ class Cat:
         return f"{action}了 {fmt_left(real * self.args.speed)}，这时候有动静。"
 
     def wake_message(self, reason):
-        now = dt.datetime.now()
+        now = self.now()
         notes = self.room.new_notes(self.last_wake)
         head = f"【醒来】{now:%Y-%m-%d} 星期{WEEK[now.weekday()]} {now:%H:%M}。"
         if self.born:
             head += "你刚出生，这是你第一次醒来。"
             self.born = False
         else:
-            slept = int((time.time() - self.sleep_started) / 60 * self.args.speed)
+            if self.away:
+                slept = int((now - self.fell_asleep).total_seconds() / 60)
+            else:
+                slept = int((time.time() - self.sleep_started) / 60 * self.args.speed)
             head += f"你睡了 {slept // 60} 小时 {slept % 60} 分钟。"
         parts = [head + reason]
         if self.heard:
             parts.append("【睡着的时候迷迷糊糊听到】\n" + "\n".join(self.heard))
             self.heard = []
         parts += ["【猫牌.md】\n" + self.room.peek("猫牌.md")]
-        parts += self.bond.describe()
+        parts += self.bond.describe(now.date())
         notebook = self.room.peek("两脚兽.md").splitlines()
         parts.append("【两脚兽.md】\n" + "\n".join(notebook[-30:]))
-        if dream := self.room.dream():
+        if dream := self.room.dream(now.date()):
             parts.append(f"【刚才睡着的时候梦到】小本本里的一件旧事：{dream}")
         if self.presence_line():
             parts.append("【两脚兽】" + self.presence_line())
@@ -935,7 +982,7 @@ class Cat:
                 out(f"    （{NAME}叼了「{thing}」放在门口）", "you")
             elif dst.startswith("桌子底下"):
                 out(f"    咣当！{NAME}把「{thing}」推下了桌子", "you")
-        time.sleep(LINE_BEAT)
+        time.sleep(self.beat())
         return res, None
 
     def think(self, msgs):
@@ -964,11 +1011,16 @@ class Cat:
         wake = self.wake_message(reason)
         msgs = [{"role": "system", "content": system_prompt(self.args)}, {"role": "user", "content": wake}]
         self.last_wake = time.time()
-        out(f"\n（{NAME}醒了）", "dim")
+        out(f"\n  ── {self.clock:%m-%d %H:%M}，{NAME}醒了 ──" if self.away else f"\n（{NAME}醒了）", "dim")
         sleep_for = None
         last_text = None
         idle = 0  # 连着几次只说话、没调工具、也没人来
-        for _ in range(self.args.max_steps):
+        steps = min(self.args.max_steps, AWAY_STEPS) if self.away else self.args.max_steps
+        for _ in range(steps):
+            if self.away and self.skip.is_set():
+                out(f"（{NAME}趴下了）", "dim")
+                sleep_for = 60
+                break
             if self.drain_inbox(msgs):
                 idle = 0
             self.status, self.status_until = "耳朵转来转去", 0
@@ -1013,7 +1065,7 @@ class Cat:
                 break
             last_text = text
             idle += 1
-            if idle >= IDLE_TALK_LIMIT:  # 保险：一直光说不做，是模型卡在自言自语里了
+            if idle >= (3 if self.away else IDLE_TALK_LIMIT):  # 保险：一直光说不做，是模型卡在自言自语里了
                 out(f"（{NAME}发了会儿呆，睡着了）", "dim")
                 sleep_for = 60
                 break
@@ -1021,7 +1073,7 @@ class Cat:
                 done, _ = self.hold("等着", HEARTBEAT_MINUTES * 60 / self.args.speed)
                 if done and self.inbox.empty():
                     note = "（你这几次都只是在说，说的动作没有真的发生。）" if idle >= 3 else ""
-                    msgs.append({"role": "user", "content": f"【现在】{dt.datetime.now():%H:%M}。周围很安静。"
+                    msgs.append({"role": "user", "content": f"【现在】{self.now():%H:%M}。周围很安静。"
                                                             + self.presence_line() + note})
                     break
         if sleep_for is None:  # 保险：想太多次了
@@ -1031,8 +1083,9 @@ class Cat:
             self.stop_toy(quiet=True)
         if not self.pic_for_human:
             self.pic = None
-        if any(m["role"] == "assistant" for m in msgs):  # 脑袋没连上的那次不存
-            self.save([{"role": "system", "content": SYSTEM_MIN}] + msgs[1:])
+        self.brain_ok = any(m["role"] == "assistant" for m in msgs)
+        if self.brain_ok:  # 脑袋没连上的那次不存
+            self.save([{"role": "system", "content": SYSTEM_MIN}] + msgs[1:], category="away" if self.away else "cli")
         self.asleep = True
         self.sleep_started = time.time()
         return max(1.0, min(sleep_for, self.args.max_sleep))
@@ -1050,8 +1103,8 @@ class Cat:
                     "arguments": json.loads(c["function"].get("arguments") or "{}")}}
                     for c in m["tool_calls"]]
             log.append(m)
-        d = HERE / "轨迹"
-        d.mkdir(exist_ok=True)
+        d = HOME / "轨迹"
+        d.mkdir(parents=True, exist_ok=True)
         row = {"id": f"{category}-{dt.datetime.now():%Y%m%d-%H%M%S}", "category": category,
                "model": self.args.model, "trained": self.args.trained,
                "tools": tools or TOOLS, "messages": log}
@@ -1059,8 +1112,19 @@ class Cat:
             fo.write(json.dumps(row, ensure_ascii=False) + "\n")
         self.bond.touch()
 
+    def leave(self):
+        """关门：记下它还要睡多久，下次打开从这里接着过。"""
+        left = None
+        if self.asleep and not self.away:
+            left = max(0.0, self.sleep_until - time.time()) * self.args.speed / 60
+        self.bond.d["还要睡"] = left
+        self.bond.touch()
+
     def toolbar(self):
         now = time.time()
+        if self.away:
+            doing = f" · {self.status}" if self.status else ""
+            return f" ⏩ 你不在的时候 · {self.now():%m-%d %H:%M}{doing} · Esc 不等了 "
         if self.player == "human":
             return f" 🎮 你在玩「{self.game_title}」· 方向键 / 空格 · Esc 放下 · {NAME}在旁边看 "
         if self.asleep and self.status:
@@ -1122,6 +1186,136 @@ def drowsy(cat, events):
     return decision
 
 
+# ── 你不在的时候 ───────────────────────────────────────
+# 程序关着，猫的日子照样过。下次打开时，按它自己的钟把那段日子补过一遍：真的醒来、真的扒窗户、
+# 真的做玩具写日记，只是两脚兽不在家，时间不用真的等。补完看看家里多了什么，告诉两脚兽。
+
+def fmt_span(td):
+    m = int(td.total_seconds() // 60)
+    d, h, m = m // 1440, m % 1440 // 60, m % 60
+    if d:
+        return f"{d} 天 {h} 小时" if h else f"{d} 天"
+    return f"{h} 小时 {m} 分钟" if h else f"{m} 分钟"
+
+
+def snapshot(root: Path):
+    """猫窝里每个文件的样子：(修改时间, 大小, 文字)。只有 .md 留文字，用来看多写了哪几行。"""
+    shot = {}
+    for f in root.rglob("*"):
+        rel = f.relative_to(root)
+        if f.is_file() and not any(part.startswith(".") for part in rel.parts):
+            st = f.stat()
+            text = f.read_text(encoding="utf-8", errors="replace") if f.suffix == ".md" else None
+            shot[rel.as_posix()] = (st.st_mtime, st.st_size, text)
+    return shot
+
+
+def fresh_lines(before, after, rel):
+    """多写了哪几行。它常常接在后面写（还不一定先换行），所以先看是不是接着写的。"""
+    old = (before.get(rel) or (0, 0, ""))[2] or ""
+    new = (after.get(rel) or (0, 0, ""))[2] or ""
+    if new.startswith(old):
+        added = new[len(old):]
+    else:
+        seen = set(old.splitlines())
+        added = "\n".join(line for line in new.splitlines() if line not in seen)
+    return [line.strip()[:120] for line in added.splitlines() if line.strip()]
+
+
+def away_report(cat, before, wakes, start, end):
+    """补完以后：家里多了什么、少了什么。都是真发生过的，从文件里看出来，不是它自己说的。"""
+    after = snapshot(cat.room.root)
+    new = [r for r in after if r not in before]
+    changed = [r for r in after if r in before and after[r][:2] != before[r][:2]]
+    gone = [r for r in before if r not in after]
+
+    def under(d, files):
+        return [r for r in files if r.startswith(d + "/")]
+
+    rows = [f"{NAME}醒了 {wakes} 次。"]
+    pics = [r for r in under("窗外", new) if r.lower().endswith(IMAGE_EXT)]
+    if pics:
+        rows.append(f"叼回来 {len(pics)} 张图：" + "、".join(pics[:4]) + ("……" if len(pics) > 4 else ""))
+    toys = [Path(r).stem for r in under("玩具箱", new) if r.endswith(".py")]
+    if toys:
+        rows.append("做了玩具：" + "、".join(toys) + f"（输入 /玩 {toys[0]} 来玩）")
+    for d, verb in (("门口", "门口多了："), ("桌子底下", "推下了桌子："), ("家里", "家里多了：")):
+        if got := [Path(r).name for r in under(d, new)]:
+            rows.append(verb + "、".join(got))
+    if under("藏起来的", new):
+        rows.append("往角落里扒拉了点什么（不给你看）。")
+    if gone:
+        rows.append(f"扔掉了 {len(gone)} 样东西。")
+    if "猫牌.md" in changed:
+        rows.append("改了自己的猫牌（/猫牌 看看）。")
+    for rel, verb in (("窗外清单.md", "想去窗外看："), ("我闻过的.md", "学到了：")):
+        if lines := fresh_lines(before, after, rel):
+            rows.append(verb)
+            rows += ["   " + line for line in lines[:3]]
+    for rel in sorted(under("日记", new + changed)):
+        if lines := fresh_lines(before, after, rel):
+            rows.append(f"日记（{Path(rel).stem}）：")
+            rows += ["   " + line for line in lines[:8]]
+    if len(rows) == 1:
+        rows.append("家里看起来什么也没变。大概一直在发呆、舔毛、睡觉。")
+    out(f"\n  ╭─ 🐾 你不在的这 {fmt_span(end - start)}（{start:%m-%d %H:%M} → {end:%m-%d %H:%M}）", "visit")
+    for row in rows:
+        out(f"  │ {row}", "visit")
+    out("  ╰─", "visit")
+
+
+def catch_up(cat):
+    """把程序关着的那段日子补过一遍。返回要告诉它的事（两脚兽看到了什么、补的时候说了什么）。"""
+    args = cat.args
+    last = cat.bond.d.get("上次")
+    if cat.born or not last or args.away_wakes <= 0:
+        return ""
+    start, end = dt.datetime.fromtimestamp(last), dt.datetime.now()
+    if (end - start).total_seconds() < AWAY_MIN_MINUTES * 60:
+        return ""
+    left = cat.bond.d.get("还要睡")  # 关门的时候它还要睡多久；醒着被关门的话就地趴下
+    first = left if isinstance(left, (int, float)) else random.uniform(20, 90)
+    t = start + dt.timedelta(minutes=max(5.0, first))
+    if t >= end:
+        out(f"\n  （你不在的这 {fmt_span(end - start)}，{NAME}一直在睡）", "dim")
+        return ""
+    before = snapshot(cat.room.root)
+    cat.away, cat.fell_asleep = True, start
+    out(f"\n  ⏩ 你不在的这 {fmt_span(end - start)}，{NAME}……（Esc 不等了）", "visit")
+    wakes = 0
+    try:
+        while t < end and wakes < args.away_wakes and not cat.skip.is_set():
+            cat.clock = t
+            minutes = cat.awake()
+            wakes += 1
+            if not cat.brain_ok:
+                break
+            cat.fell_asleep = cat.clock
+            # 睡多久它自己定；中间没记下来的醒来（发呆、舔毛）不补，剩下的几次摊开在这段日子里
+            rest = (end - cat.clock).total_seconds() / 60
+            spread = rest / (args.away_wakes - wakes + 1) * random.uniform(0.7, 1.2)
+            t = cat.clock + dt.timedelta(minutes=max(minutes, spread))
+    except Exception as e:  # 补不下去就算了，别把猫弄坏
+        out(f"（补不下去了：{type(e).__name__}：{e}）", "sys")
+    finally:
+        cat.away, cat.clock = False, None
+        cat.skip.clear()
+    cat.sleep_started = time.time() - (end - cat.fell_asleep).total_seconds() / args.speed
+    if not cat.pic_for_human:
+        cat.pic = None
+    away_report(cat, before, wakes, start, end)
+    shown = []
+    for said, f in cat.pending:
+        cat.show_visit(said, f, late=True)
+        if f:
+            shown.append(f"「{f.relative_to(cat.room.root).as_posix()}」")
+    cat.pending = []
+    told = [f"两脚兽看到了你不在的时候留给它的{'、'.join(shown)}。"] if shown else []
+    told += cat.later
+    cat.later = []
+    return "\n".join(told)
+
+
 # ── 人类那边 ───────────────────────────────────────────
 
 HELP = """  打字就是跟它说话、对它做事（「摸摸你」「给你开个罐罐」「做个贪吃蛇」）
@@ -1141,7 +1335,9 @@ HELP = """  打字就是跟它说话、对它做事（「摸摸你」「给你�
 
 def poke(cat: Cat, event):
     """人类说了话、做了事。醒着就打断它；睡着就交给它半睡半醒地决定。"""
-    if cat.asleep:
+    if cat.away:  # 它还在过你不在的那段日子，等补完再告诉它
+        cat.later.append(event)
+    elif cat.asleep:
         cat.sleep_events.put(event)
         cat.wake_now.set()
     else:
@@ -1217,8 +1413,8 @@ def command(cat: Cat, cmd, arg):
             state = f"睡着，还要睡 {left:.0f} 分钟"
         else:
             state = "醒着" + (f"，在玩「{cat.game_title}」" if cat.toy else "") + (f"，{cat.status}" if cat.status else "")
-        logs = sum(1 for f in (HERE / "轨迹").glob("*.jsonl") for _ in open(f, encoding="utf-8")) \
-            if (HERE / "轨迹").exists() else 0
+        logs = sum(1 for f in (HOME / "轨迹").glob("*.jsonl") for _ in open(f, encoding="utf-8")) \
+            if (HOME / "轨迹").exists() else 0
         out(f"  {NAME}：{state}\n  模型：{args.model}{'（训练好的）' if args.trained else '（+ persona.md）'}"
             f" @ {args.base_url}\n  猫窝：{cat.room.root}\n  轨迹：{logs} 条")
     elif cmd == "/model":
@@ -1248,11 +1444,15 @@ def handle(cat: Cat, line):
 
 
 def cat_loop(cat: Cat):
+    if told := catch_up(cat):
+        cat.wake_reason = (cat.wake_reason + "\n" + told).strip()
     while True:
         minutes = cat.awake(cat.wake_reason)
         cat.wake_reason = ""
         if cat.args.once:
             out(f"（睡了。它想睡 {minutes:.0f} 分钟）", "dim")
+            cat.bond.d["还要睡"] = minutes
+            cat.bond.touch()
             os._exit(0)
         cat.sleep_until = time.time() + minutes * 60 / cat.args.speed
         out(f"（{NAME}睡着了，打算睡 {minutes:.0f} 分钟）", "dim")
@@ -1276,13 +1476,80 @@ def cat_loop(cat: Cat):
             cat.heard += events  # 醒来会迷迷糊糊记得；记不记下来是它的事
 
 
+# ── 演示 ──────────────────────────────────────────────
+# 不用模型、不用 key：放一只真猫（团子）录下来的几次醒来。都是真发生过的，一个字没改。
+
+DEMO = HERE / "演示.jsonl"
+
+
+def demo(args):
+    global NAME
+    rows = [json.loads(line) for line in DEMO.read_text(encoding="utf-8").splitlines() if line.strip()]
+    NAME = rows[0].get("name", NAME)
+    beat = LINE_BEAT / max(1.0, args.speed)
+    out(BANNER.replace("哈基米", NAME), "cat")
+    out(f"  这是一只真猫（{NAME}）录下来的几次醒来，模型是 {rows[0].get('model', '?')}，一个字没改。", "sys")
+    out("  想养你自己的：去掉 --demo，第一次打开会先领养。Ctrl+C 退出。", "sys")
+    time.sleep(beat * 4)
+    away = False
+    for r in rows:
+        if r.get("category") == "away" and not away:
+            out("\n  ⏩ 两脚兽关了电脑走了。下面是第二天打开时，补过的你不在的那段日子：", "visit")
+        away = r.get("category") == "away"
+        names = {}
+        for m in r["messages"]:
+            c = m.get("content") or ""
+            if m["role"] == "user":
+                if c.startswith("【醒来】"):
+                    head = c.splitlines()[0]
+                    when = re.search(r"\d{4}-(\d{2}-\d{2}) (星期.) (\d{2}:\d{2})", head)
+                    came = "两脚兽开门进来了" in head
+                    out(f"\n  ── {when.group(1)} {when.group(2)} {when.group(3)}，{NAME}醒了"
+                        + ("（两脚兽开门进来了）" if came else "") + " ──", "dim")
+                    for line in c.splitlines()[1:]:
+                        if line.startswith("【刚才睡着的时候梦到】"):
+                            out("  💭 梦到小本本里的旧事：" + line.split("：", 1)[-1].lstrip("- "), "dim")
+                elif c.startswith("【有人说】"):
+                    out(f"  你 ▸ {c[5:]}", "you")
+                elif c.startswith("【两脚兽玩了"):
+                    out("    🎮 " + c.splitlines()[0], "you")
+                elif c.startswith(("【你听到】", "【你注意到】")):
+                    out("  " + c.splitlines()[0], "dim")
+            elif m["role"] == "assistant":
+                perform(re.sub(r"(?s)<think>.*?</think>", "", c).strip(), beat)
+                for call in m.get("tool_calls") or []:
+                    name, a = call["function"]["name"], call["function"].get("arguments") or {}
+                    a = json.loads(a) if isinstance(a, str) else a
+                    names[call["id"]] = name
+                    if name == "visit":
+                        out(f"  ╭─ 🐾 {NAME}{'来过（你不在）' if away else '来找你了'}", "visit")
+                        for line in str(a.get("say", "")).splitlines():
+                            out(f"  │ {line}", "visit")
+                        out("  ╰─" + (f" 叼着：{a['gift']}" if a.get("gift") else ""), "visit")
+                    elif name == "sleep":
+                        out(f"（{NAME}睡着了，打算睡 {a.get('minutes', '?')} 分钟）", "dim")
+                    elif name == "act":
+                        out(f"  （{str(a.get('action', '')).strip('（）() ')}）", "dim")
+                    elif name == "move" and str(a.get("dst", "")).startswith("桌子底下"):
+                        out(f"    咣当！{NAME}把「{Path(str(a.get('src'))).name}」推下了桌子", "you")
+                    else:
+                        out(f"    🐾 {tool_label(name, a)}", "dim")
+                    time.sleep(beat)
+            elif m["role"] == "tool" and names.get(m.get("tool_call_id")) in ("play", "press"):
+                frame = c.split("\n", 1)[-1].split("\n（用 press")[0]
+                out("\n".join("    " + line for line in frame.splitlines()), "dim")
+                time.sleep(beat * 2)
+        time.sleep(beat * 3)
+    out(f"\n  （演示完了。{NAME}还在睡。想养你自己的那只：hachimi）", "sys")
+
+
 def main():
     p = argparse.ArgumentParser(description="哈基米：住在命令行里的猫")
     p.add_argument("--base-url", help="模型服务地址（OpenAI 兼容，…/v1）。也可以用 HACHIMI_BASE_URL 或 设置.json")
     p.add_argument("--model", help="模型名。也可以用 HACHIMI_MODEL 或 设置.json")
     p.add_argument("--api-key", help="云端服务的 key。最好用 HACHIMI_API_KEY 或 设置.json，别留在命令历史里")
     p.add_argument("--trained", action="store_true", help="底层是训练好的哈基米模型，不塞人设")
-    p.add_argument("--room", type=Path, default=HERE / "猫窝")
+    p.add_argument("--room", type=Path, default=HOME / "猫窝", help=f"猫窝在哪（默认 {HOME / '猫窝'}）")
     p.add_argument("--speed", type=float, default=1.0, help="时间快进倍数（睡觉和动作都快进）")
     p.add_argument("--max-sleep", type=float, default=720, help="最多睡几分钟（它的时间，保险）")
     p.add_argument("--max-steps", type=int, default=200, help="一次醒来最多想几次（防止模型卡住的保险）")
@@ -1291,9 +1558,18 @@ def main():
     p.add_argument("--work-minutes", type=float, default=90, help="两脚兽在电脑前坐了多久没起来，就告诉它")
     p.add_argument("--no-pop", action="store_true", help="它来找你的时候不把窗口叫到最前面，只叮一声")
     p.add_argument("--no-senses", action="store_true", help="不让它感觉你在不在电脑前")
+    p.add_argument("--away-wakes", type=int, default=3,
+                   help="程序关着的那段日子，打开时最多补几次醒来（0 就是不补，当它一直在睡）")
+    p.add_argument("--demo", action="store_true", help="不用模型、不用 key：看一只真猫录下来的几次醒来")
     args = p.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    if args.demo:
+        try:
+            demo(args)
+        except KeyboardInterrupt:
+            print("\n（你轻轻关上了门）")
+        return
     interactive = sys.stdin.isatty()
 
     global NAME
@@ -1329,6 +1605,7 @@ def main():
         else:
             while True:
                 time.sleep(1)
+        cat.leave()
         return
 
     run_ui(cat)
@@ -1434,6 +1711,7 @@ def run_ui(cat: Cat):
     for key, name in (("up", "上"), ("down", "下"), ("left", "左"), ("right", "右"), (" ", "空格")):
         kb.add(key, filter=playing, eager=True)(lambda e, n=name: cat.human_press(n))
     kb.add("escape", filter=playing, eager=True)(lambda e: cat.human_quit())
+    kb.add("escape", filter=Condition(lambda: cat.away), eager=True)(lambda e: cat.skip.set())
 
     from prompt_toolkit.output import ColorDepth
     truecolor = "WT_SESSION" in os.environ or os.environ.get("COLORTERM") in ("truecolor", "24bit")
@@ -1451,7 +1729,7 @@ def run_ui(cat: Cat):
     threading.Thread(target=cat_loop, args=(cat,), daemon=True).start()
     app.run()
     UI.app = None
-    cat.bond.touch()
+    cat.leave()
     print("（你轻轻关上了门）")
 
 
