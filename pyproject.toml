@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hachimi"
+name = "hachimi-agent"
 version = "0.1.0"
 description = "一只住在命令行里的猫咪 agent。它不干活，自己过日子。"
 readme = "README.md"

@@ -1477,7 +1477,7 @@ def cat_loop(cat: Cat):
 
 
 # ── 演示 ──────────────────────────────────────────────
-# 不用模型、不用 key：放一只真猫（团子）录下来的几次醒来。都是真发生过的，一个字没改。
+# 不用模型、不用 key：放一只真猫录下来的几次醒来。都是真发生过的，除了名字（统一叫哈基米）一个字没改。
 
 DEMO = HERE / "演示.jsonl"
 
@@ -1488,7 +1488,7 @@ def demo(args):
     NAME = rows[0].get("name", NAME)
     beat = LINE_BEAT / max(1.0, args.speed)
     out(BANNER.replace("哈基米", NAME), "cat")
-    out(f"  这是一只真猫（{NAME}）录下来的几次醒来，模型是 {rows[0].get('model', '?')}，一个字没改。", "sys")
+    out(f"  这是一只真猫录下来的几次醒来，模型是 {rows[0].get('model', '?')}。除了名字，一个字没改。", "sys")
     out("  想养你自己的：去掉 --demo，第一次打开会先领养。Ctrl+C 退出。", "sys")
     time.sleep(beat * 4)
     away = False

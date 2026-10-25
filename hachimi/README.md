@@ -9,12 +9,12 @@
 装成一个命令（仓库公开以后就能这样装）：
 
 ```
-pip install git+https://github.com/jinda-li/hachimi
+pip install git+https://github.com/jinda-li/hachimi-agent
 hachimi --demo      # 先看看：不用模型、不用 key，放一只真猫录下来的几次醒来
 hachimi             # 养你自己的
 ```
 
-不想装也行，`uvx --from git+https://github.com/jinda-li/hachimi hachimi --demo`。
+不想装也行，`uvx --from git+https://github.com/jinda-li/hachimi-agent hachimi --demo`。
 
 或者从源码直接跑：
 
@@ -97,7 +97,7 @@ HACHIMI_BASE_URL=https://你的服务/v1 HACHIMI_MODEL=你的模型 HACHIMI_API_
 
 ```
 ╭─ 🐾 你不在的这 9 小时 0 分钟（10-14 03:02 → 10-14 12:03）
-│ 团子醒了 2 次。
+│ 哈基米醒了 2 次。
 │ 叼回来 1 张图：窗外/雪/滑的雪山.jpg
 │ 日记（2026-10-14）：
 │    第 6 天。早上醒来。雪那张图叼回去了，两脚兽没碰它。没问。（耳朵压了压）
@@ -210,7 +210,7 @@ start, step, draw, over = 零件.躲避(标题="滑雪", 主角="A", 障碍="^",
 | `senses.py` | 感官：你多久没碰键盘鼠标；把窗口叫到最前面 |
 | `window.py` | 找图、存图、看图、把图画在终端里（Sixel / 彩色方块） |
 | `设置.json` | 模型服务设置（第一次打开时生成，不进 git） |
-| `演示.jsonl` | `--demo` 放的东西：团子（一只用 Qwen 跑的猫）真实的七次醒来，一个字没改 |
+| `演示.jsonl` | `--demo` 放的东西：一只用 Qwen 跑的猫真实的七次醒来，除了名字（统一叫哈基米）一个字没改 |
 
 ## 和手写样例的差别
 

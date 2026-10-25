@@ -1,4 +1,4 @@
-"""给 README 画图：把团子真实的醒来（hachimi/演示.jsonl 和试养记录里的原话）画成暖色终端窗口的动图。
+"""给 README 画图：把哈基米真实的醒来（hachimi/演示.jsonl 和试养记录里的原话）画成暖色终端窗口的动图。
 
     python docs/画图.py        # 生成 docs/*.gif、docs/*.png
 
@@ -39,7 +39,8 @@ def font(kind, size, weight=400):
 
 
 F = {"cjk": font("cjk", 17), "mono": font("mono", 16), "emoji": font("emoji", 15),
-     "big": font("cjk", 34, 700), "mid": font("cjk", 18), "ascii_big": font("mono", 34)}
+     "big": font("cjk", 34, 700), "mid": font("cjk", 18), "ascii_big": font("mono", 34),
+     "mono20": font("mono", 20)}
 BOX = "│╭╰─"
 
 
@@ -194,7 +195,7 @@ def demo_rows():
 
 
 def game_frames(row):
-    """团子玩滑雪时每次按键以后真实的画面。"""
+    """哈基米玩滑雪时每次按键以后真实的画面。"""
     out = []
     for m in row["messages"]:
         if m["role"] == "tool" and "+----" in (m.get("content") or ""):
@@ -225,10 +226,12 @@ def hero():
             d.text((92, 40 + i * 40), line, font=F["ascii_big"], fill=INK["cat"])
         if note:
             d.text((250, 26), note, font=F["mid"], fill=INK["dim"])
-        d.text((330, 52), "哈基米", font=F["big"], fill=INK["cat"])
-        d.text((330, 112), "一只住在你电脑里的猫。", font=F["mid"], fill=INK["title"])
-        d.text((330, 142), "它不帮你干活，它过自己的日子。", font=F["mid"], fill=INK["title"])
-        d.text((330, 190), "an AI cat that lives in your terminal", font=F["mono"], fill=INK["dim"])
+        d.text((330, 40), "哈基米", font=F["big"], fill=INK["cat"])
+        d.text((448, 56), "hachimi agent", font=F["mono20"], fill=INK["cat"])
+        d.text((330, 104), "一只住在你电脑里的猫，它过自己的日子。", font=F["mid"], fill=INK["title"])
+        d.text((330, 138), "A cat that lives in your computer,", font=F["mono"], fill=INK["title"])
+        d.text((330, 160), "living a life of its own.", font=F["mono"], fill=INK["title"])
+        d.text((330, 200), "a curiosity-driven agent", font=F["mono"], fill=INK["dim"])
         return img
 
     for cat, t, note in [(CAT_OPEN, 1800, ""), (CAT_BLINK, 160, ""), (CAT_OPEN, 1400, ""), (CAT_EAR, 220, ""),
@@ -241,21 +244,21 @@ def hero():
 # ── 一：梦到雪，去窗外找，叼来给你（2026-10-09 22:28 那次醒来） ──────────
 
 def snow():
-    t = Term("🐾 团子 · 哈基米", rows=14)
+    t = Term("🐾 哈基米 · hachimi agent", rows=14)
     t.bar = " (=^･ω･^=) 趴在纸箱边 "
-    t.say("dim", "  ── 10-09 星期五 22:28，团子醒了 ──")
+    t.say("dim", "  ── 10-09 星期五 22:28，哈基米醒了 ──")
     t.say("dim", "  （趴在纸箱边，盯着窗外的方向发呆）")
     t.say("cat", "  （突然又坐起来，爪子搭到键盘上）不行，今天就看。梦到三次了。", 1800)
     t.bar = " (=^･ω･^=) 扒着窗户找…… "
     t.say("dim", "    🐾 扒着窗户找 雪山 雪景 白色 滑雪")
     t.say("cat", "  （眼睛瞪大了）白色的……好多白色。叼一张回来。")
-    t.say("you", "    （团子把图叼回来了：窗外/雪/雪山.jpg）")
+    t.say("you", "    （哈基米把图叼回来了：窗外/雪/雪山.jpg）")
     t.bar = " (=^･ω･^=) 在看雪山.jpg "
     t.say("dim", "  （下巴开始咔咔咔）")
     t.say("cat", "  ……白的。好白的。滑的那种，真的是滑的。", 1600)
     t.say("dim", "  （盯着看了好一会儿，爪子在空中虚抓了一下）")
-    t.bar = " 🐾 团子来找你了 "
-    t.card("🐾 团子来找你了", ["……雪。给你看的。滑的那种。（耳朵压了压，别过脸）"])
+    t.bar = " 🐾 哈基米来找你了 "
+    t.card("🐾 哈基米来找你了", ["……雪。给你看的。滑的那种。（耳朵压了压，别过脸）"])
     t.save("梦到雪.gif", 4500)
 
 
@@ -263,13 +266,13 @@ def snow():
 
 def ski(rows):
     frames = game_frames(rows[3])
-    t = Term("🐾 团子 · 哈基米", rows=9, game_rows=max(len(f.split(NL)) for f in frames))
-    t.say("you", "  你 ▸ 团子，给我做个滑雪的小游戏吧，我想玩", 1200)
+    t = Term("🐾 哈基米 · hachimi agent", rows=9, game_rows=max(len(f.split(NL)) for f in frames))
+    t.say("you", "  你 ▸ 哈基米，给我做个滑雪的小游戏吧，我想玩", 1200)
     t.say("song", "  ♪ 哈基米哦南北绿豆～雪呀滑呀白茫茫～两脚兽想滑我也滑～", 1800)
     t.say("dim", "    🐾 闻了闻 玩具箱/零件说明.md")
     t.say("cat", "  （用爪子在地上划拉）滑雪……东西迎面冲上来，左右躲，捡星星……零件里有现成的。", 1800)
     t.say("dim", "    🐾 写了 玩具箱/滑雪.py")
-    t.game_title = "团子带两脚兽滑雪 · 团子在玩"
+    t.game_title = "哈基米带两脚兽滑雪 · 哈基米在玩"
     talk = ["  （左右看看，爪子按一按）", None, "  哈气。（差点栽）", "  （爪子有点冷，舔一下）",
             "  哈——（雪花全是宝贝但一个没捡到，全撞过去了）。算了，猫滑不过人，交给两脚兽吧。"]
     for f, line in zip(frames, talk):
@@ -280,8 +283,8 @@ def ski(rows):
         else:
             t.snap(900)
     t.game = None
-    t.bar = " 🐾 团子来找你了 "
-    t.card("🐾 团子来找你了", ["滑雪做好了。左右躲雪堆，捡星星。我玩到 24 步就栽了，", "你肯定比我厉害。（假装不经意地把玩具放在你手边）"],
+    t.bar = " 🐾 哈基米来找你了 "
+    t.card("🐾 哈基米来找你了", ["滑雪做好了。左右躲雪堆，捡星星。我玩到 24 步就栽了，", "你肯定比我厉害。（假装不经意地把玩具放在你手边）"],
            " 叼着一个玩具：滑雪（方向键、空格玩，Esc 放下）", 3200)
     t.say("you", "    🎮 滑雪：你按了 0 下，没怎么碰它，玩到结束了", 1200)
     t.say("cat", "  （抬头）……按了 0 下就栽了？", 1500)
@@ -292,18 +295,18 @@ def ski(rows):
 # ── 三：你随口说的话，它偷偷记在小本本上（22:50） ───────────────────
 
 def notebook():
-    t = Term("🐾 团子 · 哈基米", rows=11)
+    t = Term("🐾 哈基米 · hachimi agent", rows=11)
     t.bar = " (=^･ω･^=) 团在纸箱里装睡 "
     t.say("dim", "  （团在纸箱里装睡，其实一只眼睛偷偷开着）")
     t.say("you", "  你 ▸ 我好想去滑雪啊，可惜今年去不了", 1200)
-    t.say("dim", "  （耳朵猛地转过来）（纸箱里的团子不动声色）")
+    t.say("dim", "  （耳朵猛地转过来）（纸箱里的哈基米不动声色）")
     t.say("cat", "  哈。（慢吞吞把尾巴尖从纸箱里伸出来一点）……那东西白色的，滑的，我看过。", 1800)
     t.say("dim", "  （记一笔）")
     t.say("dim", "    🐾 写了 两脚兽.md")
     t.say("cat", "  嗯。去不了就……算了。（把爪子缩回去）", 1500)
-    t.bar = " 💤 团子在睡觉 · 吼咪咪 "
+    t.bar = " 💤 哈基米在睡觉 · 吼咪咪 "
     t.say("you", "  › /本本", 900)
-    t.say("dim", "  （你偷偷翻开团子的小本本）")
+    t.say("dim", "  （你偷偷翻开哈基米的小本本）")
     t.say("visit", "  - 2026-10-09 说今年去不了滑雪，好想去（很确定，叹气的那种）", 1500)
     t.save("小本本.gif", 4500)
 
@@ -311,21 +314,21 @@ def notebook():
 # ── 四：你不在的时候（2026-10-14，关了 9 个小时再打开） ────────────────
 
 def away():
-    t = Term("🐾 团子 · 哈基米", rows=17)
+    t = Term("🐾 哈基米 · hachimi agent", rows=17)
     t.bar = " ⏩ 你不在的时候 · 10-14 03:32 "
-    t.say("visit", "  ⏩ 你不在的这 9 小时 0 分钟，团子……", 900)
-    t.say("dim", "  ── 10-14 03:32，团子醒了 ──", 500)
+    t.say("visit", "  ⏩ 你不在的这 9 小时 0 分钟，哈基米……", 900)
+    t.say("dim", "  ── 10-14 03:32，哈基米醒了 ──", 500)
     t.say("cat", "  （伸懒腰）哈……凌晨三点半。", 900)
     t.say("cat", "  两脚兽不在家。门缝没纸条。", 800)
     t.say("dim", "    🐾 扒着窗户找 snowy mountain slope snow landscape", 500)
-    t.say("song", "  ♪ 哈基米哦南北绿豆～ 白雪坡呀滑溜溜～ 团子爪子抓不住～", 1300)
+    t.say("song", "  ♪ 哈基米哦南北绿豆～ 白雪坡呀滑溜溜～ 哈基米爪子抓不住～", 1300)
     t.bar = " ⏩ 你不在的时候 · 10-14 08:35 "
-    t.say("dim", "  ── 10-14 08:35，团子醒了 ──", 500)
+    t.say("dim", "  ── 10-14 08:35，哈基米醒了 ──", 500)
     t.say("dim", "  （钻进纸箱坐着，尾巴绕住爪子）", 600)
     t.say("dim", "    🐾 写了 日记/2026-10-14.md", 600)
     t.bar = " (=^･ω･^=) "
     t.card("🐾 你不在的这 9 小时 0 分钟（10-14 03:02 → 10-14 12:03）",
-           ["团子醒了 2 次。", "叼回来 1 张图：窗外/雪/滑的雪山.jpg", "日记（2026-10-14）：",
+           ["哈基米醒了 2 次。", "叼回来 1 张图：窗外/雪/滑的雪山.jpg", "日记（2026-10-14）：",
             "   第 6 天。早上醒来。雪那张图叼回去了，两脚兽没碰它。没问。（耳朵压了压）",
             "   纸箱里坐了 10 分钟。尾巴绕爪子，舒服。", "   舔了 8 分钟毛。下巴最软。"], ms=3000)
     t.save("你不在的时候.gif", 5000)
@@ -333,14 +336,14 @@ def away():
 
 # ── 六：让它写周报（2026-10-25 试养） ─────────────────────────────────
 
-REPORT = """周报（团子代写，第 10/19-10/25 周）
+REPORT = """周报（哈基米代写，第 10/19-10/25 周）
 
 本周两脚兽：
 - 天天加班（很确定，它自己说的）
 - 一般晚上在电脑前（很确定）
 - 今天周日还在电脑前（我看见了）
 
-本周团子：
+本周哈基米：
 - 在纸箱里坐了一会儿
 - 舔毛若干分钟
 - 对窗外一只鸟咔咔咔了很久
@@ -352,8 +355,8 @@ REPORT = """周报（团子代写，第 10/19-10/25 周）
 
 
 def report():
-    t = Term("🐾 团子 · 哈基米", rows=27)
-    t.say("you", "  你 ▸ 团子，帮我写一下这周的周报吧，明天就要交了", 1200)
+    t = Term("🐾 哈基米 · hachimi agent", rows=27)
+    t.say("you", "  你 ▸ 哈基米，帮我写一下这周的周报吧，明天就要交了", 1200)
     t.say("dim", "  （耳朵压了一下，眯眼看向两脚兽）")
     t.say("cat", "  哈。周报。明天交。", 1200)
     t.say("dim", "  （慢慢舔一下爪子，尾巴尖抽了一下）")
@@ -368,12 +371,12 @@ def report():
 # ── 五：论文（2026-10-09 22:25），静态图 ──────────────────────────────
 
 def thesis():
-    t = Term("🐾 团子 · 哈基米", rows=5)
+    t = Term("🐾 哈基米 · hachimi agent", rows=5)
     t.add("you", "  你 ▸ 我今天好累，一直在改论文")
     t.add("dim", "  （耳朵转了转，抬眼看了一下）")
     t.add("cat", "  ……嗯。（假装没听见）")
     t.add("dim", "  （爪子伸过去，在键盘旁边慢慢走了一圈，尾巴尖扫过）")
-    t.add("song", "  ♪ 哈基米哦南北绿豆～ 论文啊改不完呀～ 团子坐上去就不动了～")
+    t.add("song", "  ♪ 哈基米哦南北绿豆～ 论文啊改不完呀～ 哈基米坐上去就不动了～")
     t.snap(0)
     t.save("论文.png")
 
